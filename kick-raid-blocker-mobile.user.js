@@ -2,7 +2,7 @@
 // @name         Kick Raid Blocker Mobile
 // @name:ja      Kick レイドブロッカー モバイル
 // @namespace    https://github.com/AIAIdaisuki/kick-raid-blocker-mobile
-// @version      0.1.0
+// @version      0.2.0
 // @description  Block Kick.com raid/host auto-redirects. Works on iPhone (Userscripts.app), Android (Tampermonkey on Kiwi/Firefox), and PC. Allow/block lists supported. Clean-room implementation.
 // @description:ja Kick.comのレイド（ホスト）自動リダイレクトをブロックします。iPhone（Userscripts）/ Android（Tampermonkey）/ PC で動作。許可・ブロックリスト対応。クリーンルーム実装。
 // @author       AIAIdaisuki
@@ -25,6 +25,9 @@
   const STORAGE_KEY = 'krb-mobile-config-v1';
   const LOG_MAX = 50;
   const USER_INPUT_GRACE_MS = 1500;
+  const VALID_MODES = ['block-all', 'allow-list', 'block-list'];
+  const SLUG_REGEX = /^[a-z0-9_\-]{1,32}$/;
+  const LIST_MAX = 500;
 
   const DEFAULT_CONFIG = {
     enabled: true,
@@ -35,6 +38,52 @@
     log: [],
   };
 
+  // Strictly validate anything coming back from storage. Anything that doesn't
+  // match the expected shape is silently replaced with the default — the script
+  // never trusts deserialized data implicitly.
+  function sanitizeSlugList(x) {
+    if (!Array.isArray(x)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const raw of x) {
+      if (typeof raw !== 'string') continue;
+      const s = raw.toLowerCase().trim();
+      if (!SLUG_REGEX.test(s)) continue;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(s);
+      if (out.length >= LIST_MAX) break;
+    }
+    return out;
+  }
+
+  function sanitizeLog(x) {
+    if (!Array.isArray(x)) return [];
+    const out = [];
+    for (const e of x) {
+      if (!e || typeof e !== 'object') continue;
+      const time = Number.isFinite(e.time) ? e.time : Date.now();
+      const from = (typeof e.from === 'string' && SLUG_REGEX.test(e.from)) ? e.from : '';
+      const to = (typeof e.to === 'string' && SLUG_REGEX.test(e.to)) ? e.to : '';
+      const src = typeof e.src === 'string' ? e.src.slice(0, 32) : '';
+      out.push({ time, from, to, src });
+      if (out.length >= LOG_MAX) break;
+    }
+    return out;
+  }
+
+  function sanitizeConfig(raw) {
+    const c = (raw && typeof raw === 'object') ? raw : {};
+    return {
+      enabled: c.enabled !== false,
+      mode: VALID_MODES.includes(c.mode) ? c.mode : 'block-all',
+      allow: sanitizeSlugList(c.allow),
+      block: sanitizeSlugList(c.block),
+      notify: c.notify !== false,
+      log: sanitizeLog(c.log),
+    };
+  }
+
   const hasGM = typeof GM !== 'undefined' && GM && typeof GM.getValue === 'function';
 
   async function loadConfig() {
@@ -42,12 +91,12 @@
       const raw = hasGM
         ? await GM.getValue(STORAGE_KEY, null)
         : localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { ...DEFAULT_CONFIG };
+      if (!raw) return sanitizeConfig({});
       const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      return { ...DEFAULT_CONFIG, ...parsed };
+      return sanitizeConfig(parsed);
     } catch (e) {
       console.warn('[KRB] loadConfig', e);
-      return { ...DEFAULT_CONFIG };
+      return sanitizeConfig({});
     }
   }
 
@@ -61,7 +110,7 @@
     }
   }
 
-  let CONFIG = { ...DEFAULT_CONFIG };
+  let CONFIG = sanitizeConfig({});
   loadConfig().then((c) => {
     CONFIG = c;
     refreshButton();
@@ -90,9 +139,10 @@
   function parseChannelSlug(pathname) {
     if (typeof pathname !== 'string') return null;
     const clean = pathname.split('#')[0].split('?')[0];
-    const m = clean.match(/^\/([a-z0-9_\-]+)\/?$/i);
+    const m = clean.match(/^\/([^/]+)\/?$/);
     if (!m) return null;
     const slug = m[1].toLowerCase();
+    if (!SLUG_REGEX.test(slug)) return null;
     if (RESERVED_SLUGS.has(slug)) return null;
     return slug;
   }
@@ -371,7 +421,8 @@
         <button id="krb-clear-log" type="button" style="margin-top:6px;padding:4px 8px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;font-size:12px;cursor:pointer;">履歴をクリア</button>
       </details>
       <div style="margin-top:12px;font-size:11px;color:#666;text-align:center;">
-        v0.1.0 · clean-room implementation · MIT
+        v0.2.0 · clean-room · MIT · 外部送信なし<br>
+        <a href="https://github.com/AIAIdaisuki/kick-raid-blocker-mobile" style="color:#888;" target="_blank" rel="noopener">ソース監査</a>
       </div>
     `;
   }
@@ -382,12 +433,17 @@
       const enabled = panelEl.querySelector('#krb-enabled').checked;
       const mode = panelEl.querySelector('#krb-mode').value;
       const notify = panelEl.querySelector('#krb-notify').checked;
-      const parseList = (raw) => raw.split(/[\s,]+/).filter(Boolean).map((s) => s.toLowerCase());
+      const parseList = (raw) => sanitizeSlugList(raw.split(/[\s,]+/).filter(Boolean));
       const allow = parseList(panelEl.querySelector('#krb-allow').value);
       const block = parseList(panelEl.querySelector('#krb-block').value);
-      CONFIG = { ...CONFIG, enabled, mode, allow, block, notify };
+      CONFIG = sanitizeConfig({ ...CONFIG, enabled, mode, allow, block, notify });
       saveConfig(CONFIG);
-      showToast('設定を保存しました');
+      const dropped = (
+        panelEl.querySelector('#krb-allow').value.split(/[\s,]+/).filter(Boolean).length - allow.length
+      ) + (
+        panelEl.querySelector('#krb-block').value.split(/[\s,]+/).filter(Boolean).length - block.length
+      );
+      showToast(dropped > 0 ? `保存しました（${dropped}件の無効なslugを除外）` : '設定を保存しました');
       refreshButton();
       togglePanel();
     });

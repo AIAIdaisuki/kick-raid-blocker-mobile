@@ -1,0 +1,88 @@
+name: Security Check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  forbidden-apis:
+    name: Forbid network APIs and scope creep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject network / dynamic-eval APIs in the userscript
+        run: |
+          set -e
+          FILE="kick-raid-blocker-mobile.user.js"
+          # Patterns that would mean the script can talk to the outside world
+          # or execute arbitrary strings as code. Any match fails the build.
+          PATTERN='\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|navigator\.sendBeacon|GM[._]xmlHttpRequest|GM_xmlhttpRequest|GM\.xmlHttpRequest|eval|Function\s*\(|new\s+Function|importScripts|navigator\.serviceWorker|navigator\.geolocation|crypto\.subtle\.encrypt|RTCPeerConnection)\b'
+          if grep -nE "$PATTERN" "$FILE"; then
+            echo "::error file=$FILE::Forbidden network or dynamic-eval API detected. The script must remain offline-only."
+            exit 1
+          fi
+          echo "OK: no forbidden APIs in $FILE"
+
+      - name: Verify @match is limited to kick.com
+        run: |
+          set -e
+          FILE="kick-raid-blocker-mobile.user.js"
+          # Every @match must mention kick.com. Any broader scope (*://*/*) is rejected.
+          BAD=$(grep -E '^// @match' "$FILE" | grep -vE 'kick\.com' || true)
+          if [ -n "$BAD" ]; then
+            echo "::error file=$FILE::@match line broadens scope beyond kick.com:"
+            echo "$BAD"
+            exit 1
+          fi
+          # Reject the most common over-broad patterns
+          if grep -nE '^// @match\s+\*://\*/\*' "$FILE"; then
+            echo "::error file=$FILE::Wildcard @match is forbidden."
+            exit 1
+          fi
+          echo "OK: @match is properly scoped to kick.com"
+
+      - name: Verify @grant only includes storage permissions
+        run: |
+          set -e
+          FILE="kick-raid-blocker-mobile.user.js"
+          ALLOWED='^// @grant\s+(GM\.setValue|GM\.getValue|GM\.deleteValue|GM\.listValues|none)\s*$'
+          BAD=$(grep -E '^// @grant' "$FILE" | grep -vE "$ALLOWED" || true)
+          if [ -n "$BAD" ]; then
+            echo "::error file=$FILE::@grant requests permissions beyond storage:"
+            echo "$BAD"
+            exit 1
+          fi
+          echo "OK: @grant is limited to storage APIs"
+
+      - name: Reject obfuscation / minification
+        run: |
+          set -e
+          FILE="kick-raid-blocker-mobile.user.js"
+          LONGEST=$(awk '{ print length }' "$FILE" | sort -nr | head -1)
+          if [ "$LONGEST" -gt 600 ]; then
+            echo "::error file=$FILE::Suspiciously long line ($LONGEST chars) — possible obfuscation/minification."
+            exit 1
+          fi
+          echo "OK: longest line is $LONGEST chars (under 600)"
+
+      - name: Verify all external URLs in the script are GitHub-hosted (no surprise CDNs)
+        run: |
+          set -e
+          FILE="kick-raid-blocker-mobile.user.js"
+          # Pull all https URLs out of the script (excluding @match patterns) and confirm
+          # they all live on github.com or githubusercontent.com.
+          URLS=$(grep -oE 'https?://[a-zA-Z0-9.-]+' "$FILE" \
+            | grep -vE '^https?://(kick\.com|.*\.kick\.com)$' \
+            | sort -u || true)
+          BAD=$(echo "$URLS" | grep -vE '^https?://(github\.com|raw\.githubusercontent\.com|api\.github\.com)$' || true)
+          if [ -n "$BAD" ]; then
+            echo "::error file=$FILE::External URLs that are NOT GitHub-hosted:"
+            echo "$BAD"
+            exit 1
+          fi
+          echo "OK: all external URLs in the script are GitHub-hosted or kick.com"

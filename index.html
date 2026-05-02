@@ -185,6 +185,27 @@
   </div>
 
   <div class="card">
+    <h2>🔒 セキュリティ・プライバシー</h2>
+    <p><strong>外部送信なし</strong> · <strong>kick.com 限定</strong> · <strong>ローカル保存のみ</strong>
+       — 一切のテレメトリ・アナリティクス・トラッキングを送信しません（CIで毎push自動チェック）。</p>
+    <ul>
+      <li>禁止API（fetch / XMLHttpRequest / WebSocket / GM.xmlHttpRequest / eval）の使用ゼロ</li>
+      <li>Cookie・パスワード・支払い情報には一切アクセスしない</li>
+      <li>ストレージから読んだ設定は <code>sanitizeConfig()</code> で型・regex 検証</li>
+      <li>slug: <code>[a-z0-9_-]{1,32}</code> のみ / リスト最大500件 / ログ最大50件</li>
+    </ul>
+    <p>詳細: <a href="https://github.com/AIAIdaisuki/kick-raid-blocker-mobile/blob/main/SECURITY.md" target="_blank" rel="noopener">SECURITY.md</a> ／
+       自分で監査: <a id="source-link" href="https://github.com/AIAIdaisuki/kick-raid-blocker-mobile/blob/main/kick-raid-blocker-mobile.user.js" target="_blank" rel="noopener">ソースを読む</a>
+       (約470行・難読化なし・MIT)</p>
+    <p>不安な方は <a href="https://github.com/AIAIdaisuki/kick-raid-blocker-mobile/releases" target="_blank" rel="noopener">タグ付きリリース</a>
+       に固定すると自動更新を切れます。</p>
+    <p style="font-size: 12px; color: var(--muted);">
+      インストールするスクリプトの SHA-256 (live):
+      <code id="hash-display" style="word-break:break-all;">計算中…</code>
+    </p>
+  </div>
+
+  <div class="card">
     <h2>クレジット</h2>
     <p>元のコンセプト・PC 版オリジナル: <a href="https://chromewebstore.google.com/detail/kick-raid-blocker/plbneahggclbbkgihoecnbajehndkpgp" target="_blank" rel="noopener">Kick Raid Blocker (ANON_LAB)</a></p>
     <p>本スクリプトはそれをモバイル対応のためにゼロから独自実装したものです（クリーンルーム）。</p>
@@ -192,7 +213,7 @@
 
   <footer>
     <a href="https://github.com/AIAIdaisuki/kick-raid-blocker-mobile" target="_blank" rel="noopener">GitHub</a>
-    · MIT License · v0.1.0
+    · MIT License · v0.2.0
   </footer>
 
   <script>
@@ -212,6 +233,22 @@
       else if (/android/.test(ua)) tab = 'android';
       const btn = document.querySelector(`.platform-tabs button[data-tab="${tab}"]`);
       if (btn) btn.click();
+    })();
+
+    // Compute live SHA-256 of the userscript users would install, so they can verify integrity
+    (async function showHash() {
+      const url = document.getElementById('install-btn').href;
+      const display = document.getElementById('hash-display');
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        const buf = await res.arrayBuffer();
+        const digest = await crypto.subtle.digest('SHA-256', buf);
+        const hex = Array.from(new Uint8Array(digest))
+          .map(b => b.toString(16).padStart(2, '0')).join('');
+        display.textContent = hex;
+      } catch (e) {
+        display.textContent = '取得失敗 (CORS/オフライン)';
+      }
     })();
   </script>
 </body>
