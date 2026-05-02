@@ -1,0 +1,15 @@
+#!name = Kick Raid Blocker (App)
+#!desc = Block Kick.com raid/host auto-redirects in the official mobile app by dropping Pusher StreamHost events. Chat etc. continue to work normally.
+#!system = iOS
+#!author = AIAIdaisuki
+#!homepage = https://github.com/AIAIdaisuki/kick-raid-blocker-mobile
+
+# This plugin file targets Loon/Stash. Loon's WebSocket scripting support
+# requires Loon 3.x or later. If your app version doesn't support
+# `script-websocket-message`, fall back to the NextDNS path.
+
+[Script]
+script-websocket-message = pattern=^wss?://ws-[a-z0-9-]+\.pusher\.com/.*, requires-body=true, script-path=https://raw.githubusercontent.com/AIAIdaisuki/kick-raid-blocker-mobile/main/proxy/kick-raid-blocker-ws.js, tag=KickRaidBlocker
+
+[MITM]
+hostname = ws-us2.pusher.com, ws-us2-mt1.pusher.com, ws-eu.pusher.com, ws-ap1.pusher.com, ws-ap2.pusher.com, ws-mt1.pusher.com

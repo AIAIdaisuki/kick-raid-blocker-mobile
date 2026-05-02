@@ -1,0 +1,29 @@
+# Kick Raid Blocker — NextDNS / AdGuard DNS denylist
+#
+# Adding these to a DNS-level denylist (NextDNS / AdGuard DNS / Pi-hole / etc.)
+# blocks the Pusher real-time WebSocket that delivers Kick's raid events.
+# This is a heavy hammer — chat, follower counts, gift / sub notifications,
+# and other real-time updates also stop working in the app and on kick.com.
+#
+# Usage:
+#   1. NextDNS: dashboard -> Denylist -> add each line below
+#   2. AdGuard DNS: DNS settings -> User rules -> add each line
+#   3. Pi-hole: Group Management -> Domains -> Add domain to blacklist
+#
+# Recovery: temporarily disable the rule (or remove the entry) when you want
+#           chat / followers / subs to update again.
+#
+# These hosts cover Kick's known Pusher endpoints. The mt1 / ap1 / eu / us2
+# names are Pusher cluster aliases that may rotate over time; if blocking is
+# circumvented, capture a fresh hostname from the Kick web app and add it.
+#
+# https://github.com/AIAIdaisuki/kick-raid-blocker-mobile
+
+ws-us2.pusher.com
+ws-us2-mt1.pusher.com
+ws-mt1.pusher.com
+ws-eu.pusher.com
+ws-ap1.pusher.com
+ws-ap2.pusher.com
+sockjs-us2.pusher.com
+sockjs-mt1.pusher.com

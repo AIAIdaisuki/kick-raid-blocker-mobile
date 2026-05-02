@@ -1,139 +1,163 @@
 # Kick 公式アプリでもレイドをブロックする
 
-公式アプリはネイティブアプリなので Userscript が動きません。それでもアプリで見たまま守りたい人のために、現実的な3つの方法を効果・難易度・コストで比較します。
+公式アプリはネイティブアプリなので Userscript が動きません。それでも **アプリのまま守りたい** 人のために、すぐ使える設定ファイルを用意しました。
 
-## 技術的に何が起きているか
+## 何が起きているか
 
-Kick のレイドは **Pusher WebSocket 経由** で配信されます：
+Kick のレイドは Pusher WebSocket 経由で配信されます：
 
-- 接続先: `wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679`
+- 接続先: `wss://ws-us2.pusher.com/app/<APP_ID>`（クラスタ違いで `ws-mt1` / `ws-eu` / `ws-ap1` 等もあり）
 - レイド時のイベント名: `App\\Events\\StreamHostEvent` / `App\\Events\\StreamHostedEvent`
-- チャンネル: `chatrooms.<chatroomId>`
+- 同じ WebSocket でチャット・フォロワー数・サブスクリプション通知も流れている
 
-チャット・フォロー数・サブスク通知など**すべての real-time 通信が同じ WebSocket** を流れます。これがアプリ側ブロックの難しさの根本原因です。
+→ 「Pusher を全部止める」と乱暴だがレイドも消える（無料パス）。
+→ 「Pusher の中の StreamHostEvent だけ消す」と外科的（有料パス）。
+
+---
 
 ## 比較表
 
-| 方法 | 月額 | 設定難易度 | レイドブロック | チャットへの影響 | おすすめ度 |
+| パス | コスト | 設定時間 | レイドブロック | チャットへの影響 | おすすめ |
 | --- | --- | --- | --- | --- | --- |
-| **A. ホーム画面追加（PWA）** | 無料 | ★☆☆☆☆ | 完全 | 影響なし | ⭐⭐⭐⭐⭐ |
-| **B. NextDNSでPusherを遮断** | 無料 | ★★☆☆☆ | 完全 | 全 real-time が壊れる | ⭐⭐ |
-| **C. 有料プロキシアプリ + 自作スクリプト** | $5〜 | ★★★★★ | 完全 | 影響なし | ⭐⭐⭐ |
+| **Pathα: NextDNS で Pusher 遮断** | 無料 | 5分 | ✅ 完全 | ❌ real-time 全死 | チャット見ない人 |
+| **Pathβ: Surge + 自作 WebSocket スクリプト** | $49.99 | 15分 | ✅ 完全 | 影響なし | 全部欲しい人 |
+| **Pathβ': Loon + 同スクリプト** | $4.99 | 15分 | ⚠ Loon 3.x以降のみ | 影響なし | 安く済ませたい人 |
 
 ---
 
-## A. ホーム画面追加（一番おすすめ・無料・5分）
+## Pathα: NextDNS（無料・チャット死亡）
 
-iPhone 標準機能で kick.com を「擬似アプリ」化します。**既に作成済みの Userscript v0.2.1 がそのまま動く**ため、追加開発不要・コスト0で完全なレイドブロックが手に入ります。
+### 1. NextDNS アカウントを作る
+[nextdns.io](https://nextdns.io/) で無料アカウント（300k クエリ/月、ふつうの人は十分）。
 
-### 手順
-1. iPhone で Userscripts アプリ（[App Store 無料](https://apps.apple.com/app/userscripts/id1463298887)）をインストール、設定 → Safari → 機能拡張 で有効化
-2. このリポジトリのインストールリンクから Userscript を入れる: <https://aiaidaisuki.github.io/kick-raid-blocker-mobile/>
-3. Safari で `https://kick.com/` を開く
-4. **共有ボタン（□↑） → 「ホーム画面に追加」**
-5. ホーム画面に Kick アイコンができる → タップすると全画面で開く（アドレスバー無し）
+### 2. 用意した denylist を入れる
+NextDNS ダッシュボード → **Denylist** タブ → 以下を1行ずつ追加：
 
-### 失うもの
-- 公式アプリの一部の native UI（細かなアニメーションなど）
-- iOS push 通知（Safari の web push で代替可能。Kick の通知許可をオンにすればOK）
+```
+ws-us2.pusher.com
+ws-us2-mt1.pusher.com
+ws-mt1.pusher.com
+ws-eu.pusher.com
+ws-ap1.pusher.com
+ws-ap2.pusher.com
+sockjs-us2.pusher.com
+sockjs-mt1.pusher.com
+```
 
-### 得るもの
-- ✅ Userscript によるレイドブロックが動く
-- ✅ 設定変更も右下の 🛡 ボタンで完結
-- ✅ chat / followers / subs などすべて通常通り
-- ✅ コスト 0 円
+リスト本体: [`proxy/nextdns-denylist.txt`](../proxy/nextdns-denylist.txt)
 
----
+### 3. iPhone に NextDNS の構成プロファイルを入れる
+NextDNS ダッシュボード → **Setup** タブ → **Apple → iOS** → 「**Download Configuration Profile**」をタップ
+→ Safari で開く → 設定アプリで「インストール」
 
-## B. NextDNS で Pusher WebSocket を完全遮断（無料・乱暴）
+### 4. iOS の DNS が NextDNS になっていることを確認
+設定 → 一般 → VPN とデバイス管理 → DNS → NextDNS にチェック
 
-Pusher の接続先 (`ws-us2.pusher.com`) を DNS レベルで全部止める方法。**レイドは止まりますがチャット等の real-time 機能もすべて死にます**。「視聴できれば良い、チャットいらない」派にはアリ。
+### 5. Kick アプリを開いて視聴
+レイド時間になっても遷移しない。ただしチャットは更新されない。
 
-### 手順
-1. [NextDNS](https://nextdns.io/) で無料アカウントを作る（300k クエリ/月まで無料）
-2. ダッシュボード → Denylist に以下を追加:
-   ```
-   ws-us2.pusher.com
-   sockjs-us2.pusher.com
-   ```
-3. Setup タブから **Apple → iOS** の Configuration Profile をダウンロード
-4. iPhone の設定 → プロファイル管理 → インストール
-5. 設定 → 一般 → VPN とデバイス管理 → DNS で NextDNS が選択されていることを確認
-
-### 副作用
-- ❌ Kick アプリのチャット real-time 更新が止まる（再読み込み必要）
-- ❌ フォロワー数・視聴者数の自動更新停止
-- ❌ サブスク・ギフト通知が来ない
-- ❌ 他サイトの Pusher 利用サービスにも影響（Notion 等は別の Pusher app を使うので影響なし）
-
-### 解除方法
-NextDNS のデバイスメニューから一時的にオフにできます。
+### 解除したい時
+NextDNS のデバイスメニュー → Pause で一時停止、もしくは構成プロファイルを削除。
 
 ---
 
-## C. 有料プロキシアプリ + 自作スクリプト（$5〜・上級者向け）
+## Pathβ: Surge（$49.99・チャット維持）
 
-Loon ($4.99) や Surge ($49.99) などの iOS 用 HTTPS-MITM プロキシアプリで、Pusher WebSocket フレームを inspect して `App\\Events\\StreamHostEvent` を含むメッセージだけ drop します。これだけが**外科的なブロック**を実現します。
+[Surge for iOS](https://apps.apple.com/app/surge-5/id1442620678) は HTTPS の中身までスクリプトで触れる、おそらく iOS で唯一の本格派プロキシアプリです。**WebSocket フレームの編集** に対応しているのが本ガイド的に重要。
 
-### 必要なもの
+### 1. Surge をインストール（$49.99）
 
-- iOS App Store で **Loon**（$4.99）または **Surge**（$49.99）
-- ルート CA 証明書のインストール（プロキシアプリが案内）
-- iOS で「証明書を完全に信頼」設定
+### 2. ルート CA をインストール
+Surge の Home → MitM → **Generate New CA Certificate** → **Install Certificate** → 設定アプリの指示に従って iOS にプロファイルインストール → 設定 → 一般 → 情報 → 証明書信頼設定 で **Surge Root CA を完全に信頼**
 
-### 概念実装（Loon JavaScript script）
+### 3. 本リポジトリのモジュールを取り込む
+Surge → Modules → 右上の **+** → 「Install from URL」 → 以下を貼り付け：
+
+```
+https://raw.githubusercontent.com/AIAIdaisuki/kick-raid-blocker-mobile/main/proxy/kick-raid-blocker.sgmodule
+```
+
+→ Install
+
+### 4. MITM を有効化
+Surge → Settings → MITM → ON
+
+### 5. プロキシをアクティブにする
+Surge ホームの **Start** をタップ → iOS に VPN プロファイルが出るので許可
+
+### 6. Kick アプリで動作確認
+レイドが起きると Surge のログに `[KRB] dropped raid event on chatrooms.<id>` と出ます。チャット・フォロワー数・サブ通知は通常通り。
+
+### モジュールの中身
+- [`proxy/kick-raid-blocker.sgmodule`](../proxy/kick-raid-blocker.sgmodule) — Surge module 設定
+- [`proxy/kick-raid-blocker-ws.js`](../proxy/kick-raid-blocker-ws.js) — WebSocket フレーム書き換えスクリプト
+
+---
+
+## Pathβ': Loon（$4.99・上手く行けば安上がり）
+
+[Loon](https://apps.apple.com/app/loon/id1373567447) は Surge より安く、3.x 以降で WebSocket スクリプティングに対応。
+
+### 1. Loon をインストール（$4.99）
+
+### 2. ルート CA をインストール（Surge と同じ流れ）
+
+### 3. プラグインを取り込む
+Loon → 設定 → プラグイン → URL から追加 → 以下を貼り付け：
+
+```
+https://raw.githubusercontent.com/AIAIdaisuki/kick-raid-blocker-mobile/main/proxy/kick-raid-blocker.plugin
+```
+
+### 4. MITM をオンにして起動
+Loon の MITM 設定で対象ホストが追加されていることを確認 → ホームの起動ボタン
+
+### 注意
+Loon の WebSocket scripting は新しい機能で、バージョンによっては動かないことがあります。動かない場合は Pathα か Pathβ にフォールバック。
+
+---
+
+## こんな組み合わせがおすすめ
+
+> **アプリ視聴メイン + たまにチャット見たい** な人：
+>
+> - 普段のアプリ視聴は **Pathα（NextDNS）** で raid をブロック（チャット切れる）
+> - チャット見たい時だけ **Safari で kick.com**（[ホーム画面追加 ガイド](../README.md#使い方)）→ Userscript v0.2.1 が raid をブロック + チャット動作
+>
+> どっちのモードでも raid に飛ばされません。
+
+---
+
+## Surge スクリプトの中身を確認したい方
+
+短いので [全行貼ります](../proxy/kick-raid-blocker-ws.js)：
 
 ```javascript
-// loon-kick-raid-blocker.js
-// Pusher WebSocket frame interceptor for Kick raid blocking
-// Drops App\\Events\\StreamHostEvent / StreamHostedEvent messages.
+const RAID_EVENTS = new Set([
+  'App\\Events\\StreamHostEvent',
+  'App\\Events\\StreamHostedEvent',
+]);
 
-const body = $websocket.body;  // raw frame
+const body = $websocket.body;
 try {
-  const obj = JSON.parse(body);
-  const evt = obj.event || '';
-  if (evt === 'App\\Events\\StreamHostEvent' || evt === 'App\\Events\\StreamHostedEvent') {
-    console.log('[KRB] dropped raid event', obj.channel);
-    $done({ body: '' });   // drop frame
+  const frame = JSON.parse(body);
+  if (RAID_EVENTS.has(frame.event)) {
+    frame.event = 'App\\Events\\__krb_dropped__';
+    $done({ body: JSON.stringify(frame) });
     return;
   }
 } catch {}
-$done({});  // pass through
+$done({});
 ```
 
-Loon の設定で `wss://ws-us2.pusher.com/*` にこのスクリプトを bind します。
-
-### 課題
-- 設定が複雑（ルート証明書のインストール・信頼設定で iOS が何度も警告を出す）
-- Kick がイベント名変えたら追従メンテ必要
-- WebSocket scripting は iOS プロキシアプリの中でも比較的新しい機能で、挙動が安定しない場合がある
-- 通信経路すべてがプロキシを通るためバッテリー消費が増える
-
-これ用のスクリプトファイルが必要であれば追加で書き起こします → リクエストください。
-
----
-
-## 結論：何をすべきか
-
-### ほとんどの人 → A（ホーム画面追加）
-
-公式アプリと体感差がほぼ無く、追加コスト0、レイドブロック完全動作。失うのは push 通知のみ（しかも Safari web push で代替可）。
-
-**5分で終わるので、まずこれを試してから他を考える** のが合理的です。
-
-### チャットいらない・絶対アプリ → B（NextDNS）
-
-ただし real-time が壊れるので、視聴専門の人向け。
-
-### コードを書きたい・お金払える → C（プロキシアプリ）
-
-精密だが構築・維持コストが高い。技術的興味がある人向け。
+外部送信もテレメトリも一切なく、その場でフレームを書き換えるだけです。
 
 ---
 
 ## 関連リンク
 
-- [Userscript 本体（v0.2.1）](../kick-raid-blocker-mobile.user.js)
-- [配布ページ](https://aiaidaisuki.github.io/kick-raid-blocker-mobile/)
+- [本リポジトリのトップ](../README.md)
+- [Userscript（ブラウザ用）](../kick-raid-blocker-mobile.user.js)
+- [SECURITY.md](../SECURITY.md)
 - [Pusher Channels Protocol](https://pusher.com/docs/channels/library_auth_reference/pusher-websockets-protocol/)
 - [KickLib（Kick イベント名の参考実装）](https://github.com/Bukk94/KickLib)

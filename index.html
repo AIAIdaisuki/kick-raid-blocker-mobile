@@ -168,11 +168,26 @@
 
   <div class="card" style="border-color: #fbbf24;">
     <h2>📱 Kick 公式アプリで見ている方へ</h2>
-    <p>本 Userscript は <strong>ブラウザ内でのみ動作</strong>します。Kick の公式アプリ（ネイティブアプリ）の中では動きません。</p>
-    <p><strong>最も簡単な解決策</strong>: Safari で <code>kick.com</code> を開いて「<strong>ホーム画面に追加</strong>」すると、アプリ風に使えて Userscript も動きます（無料・5分）。</p>
-    <p>3 つの方法を比較した詳しいガイド:
+    <p>本 Userscript はブラウザ内のみ。アプリ内で守りたい人向けに、ワンクリックで取り込める設定ファイルを用意しました：</p>
+    <ul>
+      <li>
+        <strong>Pathα (無料・チャット死亡)</strong>: <a href="https://github.com/AIAIdaisuki/kick-raid-blocker-mobile/blob/main/proxy/nextdns-denylist.txt" target="_blank" rel="noopener">NextDNS denylist</a>
+        — Pusher を遮断、チャット real-time も止まる
+      </li>
+      <li>
+        <strong>Pathβ (Surge $49.99・全部維持)</strong>:
+        <a href="https://raw.githubusercontent.com/AIAIdaisuki/kick-raid-blocker-mobile/main/proxy/kick-raid-blocker.sgmodule" target="_blank" rel="noopener">Surge モジュール</a>
+        — Pusher の StreamHostEvent だけ外科的に消す
+      </li>
+      <li>
+        <strong>Pathβ' (Loon $4.99)</strong>:
+        <a href="https://raw.githubusercontent.com/AIAIdaisuki/kick-raid-blocker-mobile/main/proxy/kick-raid-blocker.plugin" target="_blank" rel="noopener">Loon プラグイン</a>
+        — Surge と同じ動作、安いが Loon 3.x 以降が必要
+      </li>
+    </ul>
+    <p>セットアップ手順全文:
        <a href="https://github.com/AIAIdaisuki/kick-raid-blocker-mobile/blob/main/docs/app-raid-blocking.md" target="_blank" rel="noopener">
-         アプリでもレイドブロックする方法 →
+         docs/app-raid-blocking.md →
        </a>
     </p>
   </div>

@@ -1,0 +1,11 @@
+#!name = Kick Raid Blocker (App)
+#!desc = Block Kick.com raid/host auto-redirects in the official mobile app by dropping Pusher StreamHost events. Chat, followers, subs etc. continue to work normally.
+#!system = ios
+#!homepage = https://github.com/AIAIdaisuki/kick-raid-blocker-mobile
+#!author = AIAIdaisuki
+
+[Script]
+KickRaidBlocker-WS = type=websocket-message,pattern=^wss?://ws-[a-z0-9-]+\.pusher\.com/.*,requires-body=true,max-size=0,script-path=https://raw.githubusercontent.com/AIAIdaisuki/kick-raid-blocker-mobile/main/proxy/kick-raid-blocker-ws.js
+
+[MITM]
+hostname = %APPEND% ws-us2.pusher.com, ws-us2-mt1.pusher.com, ws-eu.pusher.com, ws-ap1.pusher.com, ws-ap2.pusher.com, ws-mt1.pusher.com
