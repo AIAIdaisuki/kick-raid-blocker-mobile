@@ -2,7 +2,7 @@
 // @name         Kick Raid Blocker Mobile
 // @name:ja      Kick レイドブロッカー モバイル
 // @namespace    https://github.com/AIAIdaisuki/kick-raid-blocker-mobile
-// @version      0.2.0
+// @version      0.2.1
 // @description  Block Kick.com raid/host auto-redirects. Works on iPhone (Userscripts.app), Android (Tampermonkey on Kiwi/Firefox), and PC. Allow/block lists supported. Clean-room implementation.
 // @description:ja Kick.comのレイド（ホスト）自動リダイレクトをブロックします。iPhone（Userscripts）/ Android（Tampermonkey）/ PC で動作。許可・ブロックリスト対応。クリーンルーム実装。
 // @author       AIAIdaisuki
@@ -147,17 +147,25 @@
     return slug;
   }
 
+  function isKickHost(hostname) {
+    // Strict check: exact match or proper subdomain. `endsWith('kick.com')`
+    // alone would match `evil-kick.com`, so we require either the full match
+    // or a leading dot before `kick.com`.
+    const h = String(hostname).toLowerCase();
+    return h === 'kick.com' || h.endsWith('.kick.com');
+  }
+
   function urlToPath(url) {
     if (typeof url !== 'string') return null;
     try {
       if (/^https?:\/\//i.test(url)) {
         const u = new URL(url);
-        if (!u.hostname.endsWith('kick.com')) return null;
+        if (!isKickHost(u.hostname)) return null;
         return u.pathname;
       }
       if (url.startsWith('//')) {
         const u = new URL('https:' + url);
-        if (!u.hostname.endsWith('kick.com')) return null;
+        if (!isKickHost(u.hostname)) return null;
         return u.pathname;
       }
       return url.startsWith('/') ? url : '/' + url;
@@ -421,7 +429,7 @@
         <button id="krb-clear-log" type="button" style="margin-top:6px;padding:4px 8px;background:#333;color:#fff;border:1px solid #555;border-radius:4px;font-size:12px;cursor:pointer;">履歴をクリア</button>
       </details>
       <div style="margin-top:12px;font-size:11px;color:#666;text-align:center;">
-        v0.2.0 · clean-room · MIT · 外部送信なし<br>
+        v0.2.1 · clean-room · MIT · 外部送信なし<br>
         <a href="https://github.com/AIAIdaisuki/kick-raid-blocker-mobile" style="color:#888;" target="_blank" rel="noopener">ソース監査</a>
       </div>
     `;
