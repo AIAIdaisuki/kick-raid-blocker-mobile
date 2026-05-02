@@ -48,7 +48,9 @@ VALID_MODES = ("block-all", "blocklist", "allowlist")
 
 SHOBON_LIST_URL = "https://shobon-ranking.ddns.net/api/getJsonData?file=./mnt/jp/live/min/list.json"
 SHOBON_SNAP_BASE = "https://shobon-ranking.ddns.net/api/getJsonData?file=./mnt/jp/live/min/"
-SHOBON_CACHE_TTL = 60  # seconds
+SHOBON_TEAMS_URL = "https://shobon-ranking.ddns.net/data/teamlist.json"
+SHOBON_CACHE_TTL = 60  # seconds for streamers
+SHOBON_TEAMS_TTL = 1800  # seconds for teams (changes rarely)
 
 
 # -------------------- list / mode IO --------------------
@@ -112,6 +114,7 @@ def set_mode(m: str) -> bool:
 # -------------------- Shobon ranking fetch --------------------
 
 _shobon_cache: dict = {"ts": 0.0, "streamers": [], "error": None}
+_shobon_teams_cache: dict = {"ts": 0.0, "teams": [], "error": None}
 _shobon_lock = threading.Lock()
 
 
@@ -168,6 +171,44 @@ def fetch_shobon_streamers() -> tuple[list[dict], str | None]:
             return _shobon_cache["streamers"], err
 
 
+def fetch_shobon_teams() -> tuple[list[dict], str | None]:
+    """Return (teams, error_message). Cached separately from streamer list."""
+    with _shobon_lock:
+        now = time.time()
+        if now - _shobon_teams_cache["ts"] < SHOBON_TEAMS_TTL and _shobon_teams_cache["teams"]:
+            return _shobon_teams_cache["teams"], _shobon_teams_cache["error"]
+        try:
+            data = _http_get_json(SHOBON_TEAMS_URL)
+            if not isinstance(data, list):
+                raise RuntimeError("teamlist.json is not an array")
+            teams: list[dict] = []
+            for t in data:
+                if not isinstance(t, dict):
+                    continue
+                if t.get("frozen"):
+                    continue  # skip dissolved / inactive teams
+                members = t.get("members") or []
+                if not isinstance(members, list):
+                    continue
+                clean_members = [
+                    s.strip().lower() for s in members
+                    if isinstance(s, str) and SLUG_RE.match(s.strip().lower())
+                ]
+                teams.append({
+                    "id": str(t.get("team_id") or "")[:16],
+                    "name": (t.get("team_name_display") or t.get("team_name") or "").strip()[:40],
+                    "color": (t.get("color") or "#888")[:16],
+                    "members": clean_members,
+                })
+            _shobon_teams_cache.update(ts=now, teams=teams, error=None)
+            return teams, None
+        except Exception as e:
+            err = f"Shobon teams fetch failed: {e}"
+            logger.warning(err)
+            _shobon_teams_cache["error"] = err
+            return _shobon_teams_cache["teams"], err
+
+
 # -------------------- HTML rendering --------------------
 
 CSS = """
@@ -208,6 +249,17 @@ button.tiny { padding:6px 10px; font-size:12px; }
 .list-item { display:flex; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid #2b2b30; }
 .list-item:last-child { border-bottom:none; }
 .list-item code { flex:1; font-size:14px; }
+.teamblock { margin:6px 0; border:1px solid #2b2b30; border-radius:10px; background:#15151a; }
+.teamblock > summary { padding:12px; cursor:pointer; font-size:14px; list-style:none; -webkit-tap-highlight-color:transparent; }
+.teamblock > summary::-webkit-details-marker { display:none; }
+.teamblock > summary::before { content:"▶"; display:inline-block; transition:transform .15s; color:#888; margin-right:6px; font-size:11px; }
+.teamblock[open] > summary::before { transform:rotate(90deg); }
+.teamblock > div { padding:0 12px 8px; }
+.teamcolor { display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; margin-right:6px; }
+.livebadge { color:#53fc18; font-size:12px; font-weight:bold; margin-left:4px; }
+.tabs { display:flex; gap:4px; background:#161618; padding:4px; border-radius:10px; border:1px solid #2b2b30; margin:8px 0; }
+.tabs > a { flex:1; text-align:center; padding:8px 4px; font-size:13px; color:#888; text-decoration:none; border-radius:6px; }
+.tabs > a.active { background:#1a1a1d; color:#fff; }
 """
 
 
@@ -238,13 +290,68 @@ def render_streamer_card(s: dict, is_blocked: bool, token: str) -> str:
     </div>'''
 
 
-def page(token: str, message: str = "", error: str = "") -> bytes:
+def render_offline_member(slug: str, is_blocked: bool, token: str) -> str:
+    btn_action = "remove_block" if is_blocked else "add_block"
+    btn_label = "解除" if is_blocked else "ブロック"
+    btn_cls = "unblock" if is_blocked else ""
+    return f'''
+    <div class="streamer" data-slug="{html.escape(slug)}">
+      <div style="width:40px;height:40px;border-radius:50%;background:#333"></div>
+      <div class="info">
+        <div class="name">{html.escape(slug)}</div>
+        <div class="meta muted">オフライン</div>
+      </div>
+      <form method="POST" action="?token={html.escape(token)}" style="margin:0">
+        <input type="hidden" name="action" value="{btn_action}">
+        <input type="hidden" name="slug" value="{html.escape(slug)}">
+        <button class="tiny {btn_cls}" type="submit">{btn_label}</button>
+      </form>
+    </div>'''
+
+
+def render_team_section(team: dict, streamers_by_slug: dict, blocklist_set: set, token: str) -> str:
+    members = team.get("members", [])
+    if not members:
+        return ""
+    live_count = sum(1 for s in members if s in streamers_by_slug)
+    color = team.get("color") or "#888"
+    cards = []
+    # Live members first, by viewer count desc
+    live_members = sorted(
+        (m for m in members if m in streamers_by_slug),
+        key=lambda m: -streamers_by_slug[m]["viewers"]
+    )
+    for m in live_members:
+        cards.append(render_streamer_card(streamers_by_slug[m], m in blocklist_set, token))
+    for m in members:
+        if m not in streamers_by_slug:
+            cards.append(render_offline_member(m, m in blocklist_set, token))
+
+    summary_badge = f'<span class="livebadge">●{live_count}名ライブ</span>' if live_count else '<span class="muted">全員オフライン</span>'
+    return f'''
+    <details class="teamblock">
+      <summary>
+        <span class="teamcolor" style="background:{html.escape(color)}"></span>
+        <strong>{html.escape(team["name"])}</strong>
+        <span class="muted">({len(members)}人)</span>
+        · {summary_badge}
+      </summary>
+      <div>
+        {"".join(cards)}
+      </div>
+    </details>
+    '''
+
+
+def page(token: str, message: str = "", error: str = "", view: str = "rank") -> bytes:
     bl = read_list(BLOCKLIST_PATH)
     al = read_list(ALLOWLIST_PATH)
     mode = get_mode()
     streamers, shobon_err = fetch_shobon_streamers()
+    teams, teams_err = fetch_shobon_teams() if view == "teams" else ([], None)
 
     bl_set = set(bl)
+    streamers_by_slug = {s["slug"]: s for s in streamers}
 
     msg_html = ""
     if message:
@@ -258,25 +365,11 @@ def page(token: str, message: str = "", error: str = "") -> bytes:
 
     # Blocked streamers section: show ALL blocked entries (even those not currently live)
     blocked_cards_parts = []
-    streamers_by_slug = {s["slug"]: s for s in streamers}
     for slug in bl:
         if slug in streamers_by_slug:
             blocked_cards_parts.append(render_streamer_card(streamers_by_slug[slug], True, token))
         else:
-            # Not currently live; render minimal entry
-            blocked_cards_parts.append(f'''
-            <div class="streamer" data-slug="{html.escape(slug)}">
-              <div style="width:40px;height:40px;border-radius:50%;background:#333"></div>
-              <div class="info">
-                <div class="name"><code>{html.escape(slug)}</code></div>
-                <div class="meta muted">現在配信していない</div>
-              </div>
-              <form method="POST" action="?token={html.escape(token)}" style="margin:0">
-                <input type="hidden" name="action" value="remove_block">
-                <input type="hidden" name="slug" value="{html.escape(slug)}">
-                <button class="tiny unblock" type="submit">解除</button>
-              </form>
-            </div>''')
+            blocked_cards_parts.append(render_offline_member(slug, True, token))
     blocked_section = "\n".join(blocked_cards_parts) if blocked_cards_parts else '<div class="muted" style="padding:8px 0;">(空)</div>'
 
     # Live streamer cards (excluding already-blocked, those are shown above)
@@ -284,6 +377,45 @@ def page(token: str, message: str = "", error: str = "") -> bytes:
         render_streamer_card(s, False, token)
         for s in streamers if s["slug"] not in bl_set
     ) if streamers else '<div class="muted" style="padding:8px 0;">(配信者リスト未取得)</div>'
+
+    # Team-grouped cards
+    if view == "teams":
+        team_section_html = "\n".join(
+            render_team_section(t, streamers_by_slug, bl_set, token)
+            for t in teams if t.get("members")
+        ) if teams else '<div class="muted" style="padding:8px 0;">(チームデータ未取得)</div>'
+        teams_warn = ""
+        if teams_err:
+            teams_warn = f'<div class="msg warn">⚠ チームデータ取得失敗: {html.escape(teams_err)}</div>'
+        main_view_block = f'''
+<div class="card">
+  <h2>👥 チーム別</h2>
+  {teams_warn}
+  <div class="row">
+    <input class="search" type="search" placeholder="🔍 配信者slugで絞り込み" oninput="filt(this)">
+  </div>
+  {team_section_html}
+</div>'''
+    else:
+        main_view_block = f'''
+<div class="card">
+  <h2>📺 ライブ中の配信者（Shobon Ranking）</h2>
+  {shobon_warn}
+  <div class="row">
+    <input class="search" type="search" placeholder="🔍 配信者名で絞り込み" oninput="filt(this)">
+  </div>
+  <div id="streamers">
+    {live_cards}
+  </div>
+</div>'''
+
+    # Tab navigation
+    tab_token = html.escape(token)
+    tabs_html = f'''
+<div class="tabs">
+  <a href="/?token={tab_token}&view=rank" class="{'active' if view != 'teams' else ''}">📺 ランキング</a>
+  <a href="/?token={tab_token}&view=teams" class="{'active' if view == 'teams' else ''}">👥 チーム別</a>
+</div>'''
 
     body = f'''<!doctype html>
 <html lang="ja">
@@ -321,19 +453,12 @@ def page(token: str, message: str = "", error: str = "") -> bytes:
   {blocked_section}
 </div>
 
-<div class="card">
-  <h2>📺 ライブ中の配信者（Shobon Ranking）</h2>
-  {shobon_warn}
-  <div class="row">
-    <input class="search" type="search" placeholder="🔍 配信者名で絞り込み" oninput="filt(this)">
-  </div>
-  <div id="streamers">
-    {live_cards}
-  </div>
-</div>
+{tabs_html}
+
+{main_view_block}
 
 <div class="card">
-  <h2>+ 手動でslugを追加（ライブでない配信者など）</h2>
+  <h2>+ 手動でslugを追加（リストにない配信者など）</h2>
   <form method="POST" action="?token={html.escape(token)}">
     <input type="hidden" name="action" value="add_block">
     <div class="row">
@@ -352,10 +477,17 @@ def page(token: str, message: str = "", error: str = "") -> bytes:
 <script>
 function filt(input) {{
   const q = input.value.trim().toLowerCase();
-  const items = document.querySelectorAll('#streamers .streamer');
+  const items = document.querySelectorAll('.streamer');
   for (const it of items) {{
     const slug = (it.dataset.slug || '').toLowerCase();
     it.style.display = slug.includes(q) ? '' : 'none';
+  }}
+  // When filtering, auto-expand teams that have visible members
+  for (const team of document.querySelectorAll('.teamblock')) {{
+    if (q.length === 0) {{ team.removeAttribute('open'); continue; }}
+    const visibleMembers = Array.from(team.querySelectorAll('.streamer')).filter(s => s.style.display !== 'none');
+    if (visibleMembers.length > 0) team.setAttribute('open', '');
+    else team.removeAttribute('open');
   }}
 }}
 </script>
@@ -405,7 +537,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         qs = urllib.parse.parse_qs(parsed.query)
         msg = qs.get("m", [""])[0][:200]
         err = qs.get("e", [""])[0][:200]
-        self._send(200, page(TOKEN, msg, err))
+        view = qs.get("view", ["rank"])[0]
+        if view not in ("rank", "teams"):
+            view = "rank"
+        self._send(200, page(TOKEN, msg, err, view))
 
     def do_POST(self) -> None:
         if not self._check_token():
