@@ -1,0 +1,35 @@
+[Unit]
+Description=Kick Raid Blocker — admin web UI (port 9876 by default)
+Documentation=https://github.com/AIAIdaisuki/kick-raid-blocker-mobile
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=krb
+Group=krb
+WorkingDirectory=/opt/krb
+Environment=PYTHONUNBUFFERED=1
+Environment=KRB_ADMIN_PORT=9876
+ExecStart=/usr/bin/python3 /opt/krb/krb_admin.py
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/opt/krb/conf
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
