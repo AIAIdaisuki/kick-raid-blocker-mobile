@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Kick Raid Blocker Mobile</title>
+  <meta name="description" content="Kick.comのレイド/ホスト自動リダイレクトをブロックするUserscript。iPhone / Android / PC で動作。">
+  <meta property="og:title" content="Kick Raid Blocker Mobile">
+  <meta property="og:description" content="Kick.comのレイド自動リダイレクトをブロック。iPhone / Android / PC 対応。">
+  <meta property="og:type" content="website">
+  <style>
+    :root {
+      --bg: #0e0e10;
+      --fg: #fff;
+      --muted: #9aa0a6;
+      --kick: #53fc18;
+      --card: #1a1a1d;
+      --border: #2b2b30;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+        "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      line-height: 1.6;
+      padding: 24px 16px 64px;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 28px;
+      margin: 0 0 4px 0;
+      letter-spacing: -0.01em;
+    }
+    .tag {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0 0 24px 0;
+    }
+    .install-button {
+      display: block;
+      width: 100%;
+      padding: 16px 20px;
+      background: var(--kick);
+      color: #000;
+      font-weight: 700;
+      font-size: 16px;
+      text-align: center;
+      text-decoration: none;
+      border: none;
+      border-radius: 12px;
+      margin: 16px 0 8px 0;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(83, 252, 24, 0.2);
+    }
+    .install-button:active { transform: translateY(1px); }
+    .install-hint {
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      margin: 0 0 24px 0;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin: 16px 0;
+    }
+    .card h2 {
+      margin: 0 0 8px 0;
+      font-size: 17px;
+    }
+    .card p, .card li { font-size: 14px; color: #d8d8da; }
+    ol { padding-left: 20px; }
+    a { color: var(--kick); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      background: #2b2b30;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .platform-tabs {
+      display: flex;
+      gap: 4px;
+      background: #161618;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+      margin-bottom: 12px;
+    }
+    .platform-tabs button {
+      flex: 1;
+      padding: 8px 4px;
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .platform-tabs button.active {
+      background: var(--card);
+      color: var(--fg);
+    }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 32px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🛡 Kick Raid Blocker Mobile</h1>
+  <p class="tag">Kick.com のレイド/ホスト自動リダイレクトをブロック · iPhone・Android・PC 対応</p>
+
+  <a class="install-button" id="install-btn"
+     href="https://raw.githubusercontent.com/AIAIdaisuki/kick-raid-blocker-mobile/main/kick-raid-blocker-mobile.user.js">
+    Userscript をインストール
+  </a>
+  <p class="install-hint">タップで Tampermonkey / Userscripts に取り込まれます</p>
+
+  <div class="card">
+    <h2>初めての方は先にこちら</h2>
+    <div class="platform-tabs" role="tablist">
+      <button data-tab="ios" class="active">iPhone</button>
+      <button data-tab="android">Android</button>
+      <button data-tab="pc">PC</button>
+    </div>
+
+    <div class="panel active" id="panel-ios">
+      <ol>
+        <li><a href="https://apps.apple.com/app/userscripts/id1463298887" target="_blank" rel="noopener">Userscripts（無料・App Store）</a>をインストール</li>
+        <li>iOS 設定 → Safari → 機能拡張 で <strong>Userscripts</strong> をオン → <strong>すべての Web サイト</strong> に許可</li>
+        <li>このページの上の「Userscript をインストール」ボタンをタップ</li>
+        <li>Userscripts のダイアログで <strong>Save</strong></li>
+        <li><a href="https://kick.com/" target="_blank" rel="noopener">kick.com</a> を開いて、右下の 🛡 ボタンが出れば成功</li>
+      </ol>
+    </div>
+
+    <div class="panel" id="panel-android">
+      <p><strong>Kiwi Browser を使う場合（おすすめ）:</strong></p>
+      <ol>
+        <li>Play Store で <strong>Kiwi Browser</strong> をインストール</li>
+        <li>Kiwi で Chrome ウェブストアの <strong>Tampermonkey</strong> をインストール</li>
+        <li>Kiwi でこのページの上のボタンをタップ → Tampermonkey の取り込みダイアログで <strong>Install</strong></li>
+        <li><a href="https://kick.com/" target="_blank" rel="noopener">kick.com</a> を開いて 🛡 を確認</li>
+      </ol>
+      <p><strong>Firefox を使う場合:</strong> Firefox に Tampermonkey 拡張を有効化して、上のボタンをタップ。</p>
+    </div>
+
+    <div class="panel" id="panel-pc">
+      <ol>
+        <li><a href="https://www.tampermonkey.net/" target="_blank" rel="noopener">Tampermonkey</a>
+          または <a href="https://violentmonkey.github.io/" target="_blank" rel="noopener">Violentmonkey</a> をブラウザにインストール</li>
+        <li>このページの上のボタンをクリック → 拡張のダイアログで <strong>インストール</strong></li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>機能</h2>
+    <ul>
+      <li>レイド/ホスト時の自動リダイレクトを検知してブロック</li>
+      <li>3 モード: <strong>すべてブロック</strong> / 許可リスト / ブロックリスト</li>
+      <li>ブロック時のトースト通知 + 履歴（直近 50 件）</li>
+      <li>kick.com 右下の 🛡 ボタンから設定（拡張メニュー不要なので iPhone でも操作可）</li>
+      <li>クライアントローカル動作のみ・外部送信なし</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>仕組み</h2>
+    <p>「ユーザー操作なしに <code>kick.com/A</code> から <code>kick.com/B</code> に切り替わろうとしたら止める」シンプルな実装。</p>
+    <p>SPA ルーター・<code>Location.assign/replace</code>・<code>location.href</code> セッター・合成クリックの 4 層をフックします。
+       通常のサイト操作（ブラウズ・カテゴリ・VOD 等への遷移、自分のクリック）は影響しません。</p>
+  </div>
+
+  <div class="card">
+    <h2>クレジット</h2>
+    <p>元のコンセプト・PC 版オリジナル: <a href="https://chromewebstore.google.com/detail/kick-raid-blocker/plbneahggclbbkgihoecnbajehndkpgp" target="_blank" rel="noopener">Kick Raid Blocker (ANON_LAB)</a></p>
+    <p>本スクリプトはそれをモバイル対応のためにゼロから独自実装したものです（クリーンルーム）。</p>
+  </div>
+
+  <footer>
+    <a href="https://github.com/AIAIdaisuki/kick-raid-blocker-mobile" target="_blank" rel="noopener">GitHub</a>
+    · MIT License · v0.1.0
+  </footer>
+
+  <script>
+    document.querySelectorAll('.platform-tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        document.querySelectorAll('.platform-tabs button').forEach(b => b.classList.toggle('active', b === btn));
+        document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+      });
+    });
+
+    // Auto-select tab based on User-Agent
+    (function autoTab() {
+      const ua = navigator.userAgent.toLowerCase();
+      let tab = 'pc';
+      if (/iphone|ipad|ipod/.test(ua)) tab = 'ios';
+      else if (/android/.test(ua)) tab = 'android';
+      const btn = document.querySelector(`.platform-tabs button[data-tab="${tab}"]`);
+      if (btn) btn.click();
+    })();
+  </script>
+</body>
+</html>
