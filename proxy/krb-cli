@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# krb — Kick Raid Blocker management CLI.
+#
+# Manages the runtime config files under /opt/krb/conf:
+#   mode.txt           the active mode: block-all | blocklist | allowlist
+#   blocklist.txt      one slug per line; raids matching these are dropped
+#   allowlist.txt      one slug per line; raids matching these are kept
+#                      (only meaningful in allowlist mode)
+#
+# Edits take effect on the very next raid event — no service restart needed
+# (the addon reloads the file when its mtime changes).
+#
+# Usage:
+#   sudo krb status                  — show mode + lists + service state
+#   sudo krb mode [block-all|blocklist|allowlist]
+#   sudo krb add <slug> [<slug>...]  — add to blocklist
+#   sudo krb remove <slug> [...]     — remove from blocklist
+#   sudo krb list                    — print blocklist
+#   sudo krb allow <slug> [...]      — add to allowlist
+#   sudo krb unallow <slug> [...]    — remove from allowlist
+#   sudo krb allowlist               — print allowlist
+#   sudo krb logs [N]                — tail mitmproxy log (last N lines, default 100)
+#   sudo krb watch                   — follow only [KRB] lines live
+#   sudo krb restart                 — restart the systemd service
+
+set -euo pipefail
+
+CONF_DIR=/opt/krb/conf
+MODE_FILE="$CONF_DIR/mode.txt"
+BLOCK_FILE="$CONF_DIR/blocklist.txt"
+ALLOW_FILE="$CONF_DIR/allowlist.txt"
+SVC=krb-mitmproxy
+
+if [[ $EUID -ne 0 ]]; then
+  exec sudo -E "$0" "$@"
+fi
+
+if [[ ! -d "$CONF_DIR" ]]; then
+  echo "ERROR: $CONF_DIR not found. Is Kick Raid Blocker installed?" >&2
+  exit 1
+fi
+
+# Ensure files exist with correct ownership
+init_file() {
+  local f="$1"; local default="${2:-}"
+  if [[ ! -f "$f" ]]; then
+    [[ -n "$default" ]] && printf '%s\n' "$default" > "$f" || : > "$f"
+    chown krb:krb "$f"
+    chmod 0644 "$f"
+  fi
+}
+init_file "$MODE_FILE"      "block-all"
+init_file "$BLOCK_FILE"
+init_file "$ALLOW_FILE"
+
+normalize() {
+  # lower-case, strip leading @, strip whitespace, validate slug chars
+  printf '%s' "$1" | tr 'A-Z' 'a-z' | sed -E 's/^@//; s/^[[:space:]]+|[[:space:]]+$//g' \
+    | grep -E '^[a-z0-9_-]{1,32}$' || return 1
+}
+
+add_to_list() {
+  local file="$1"; shift
+  for raw in "$@"; do
+    local slug
+    if ! slug=$(normalize "$raw"); then
+      echo "skip: '$raw' is not a valid slug (a-z, 0-9, _, -, 1-32 chars)" >&2
+      continue
+    fi
+    if grep -qiE "^${slug}$" "$file" 2>/dev/null; then
+      echo "already present: $slug"
+    else
+      printf '%s\n' "$slug" >> "$file"
+      chown krb:krb "$file"
+      echo "added: $slug"
+    fi
+  done
+}
+
+remove_from_list() {
+  local file="$1"; shift
+  for raw in "$@"; do
+    local slug
+    if ! slug=$(normalize "$raw"); then
+      echo "skip: '$raw' is not a valid slug" >&2
+      continue
+    fi
+    if grep -qiE "^${slug}$" "$file" 2>/dev/null; then
+      sed -i.bak "/^${slug}$/Id" "$file"
+      rm -f "${file}.bak"
+      chown krb:krb "$file"
+      echo "removed: $slug"
+    else
+      echo "not present: $slug"
+    fi
+  done
+}
+
+print_list() {
+  local file="$1"; local label="$2"
+  local count
+  count=$(grep -cvE '^\s*(#|$)' "$file" 2>/dev/null || echo 0)
+  echo "${label} (${count} entries):"
+  if [[ "$count" == "0" ]]; then
+    echo "  (empty)"
+  else
+    grep -vE '^\s*(#|$)' "$file" | sed 's/^/  /'
+  fi
+}
+
+cmd="${1:-status}"
+case "$cmd" in
+  status)
+    echo "==== Kick Raid Blocker status ===="
+    printf 'mode:    %s\n' "$(cat "$MODE_FILE" 2>/dev/null || echo block-all)"
+    echo
+    print_list "$BLOCK_FILE" "blocklist"
+    echo
+    print_list "$ALLOW_FILE" "allowlist"
+    echo
+    echo "service: $(systemctl is-active "$SVC" 2>/dev/null) ($(systemctl is-enabled "$SVC" 2>/dev/null))"
+    ;;
+  mode)
+    new="${2:-}"
+    if [[ -z "$new" ]]; then
+      cat "$MODE_FILE"
+      exit 0
+    fi
+    case "$new" in
+      block-all|blocklist|allowlist)
+        printf '%s\n' "$new" > "$MODE_FILE"
+        chown krb:krb "$MODE_FILE"
+        echo "mode set to: $new"
+        ;;
+      *)
+        echo "ERROR: mode must be one of block-all | blocklist | allowlist" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  add|block)
+    shift
+    [[ $# -gt 0 ]] || { echo "Usage: krb add <slug> [<slug>...]" >&2; exit 2; }
+    add_to_list "$BLOCK_FILE" "$@"
+    ;;
+  remove|unblock|rm)
+    shift
+    [[ $# -gt 0 ]] || { echo "Usage: krb remove <slug> [<slug>...]" >&2; exit 2; }
+    remove_from_list "$BLOCK_FILE" "$@"
+    ;;
+  list|blocklist|ls)
+    print_list "$BLOCK_FILE" "blocklist"
+    ;;
+  allow)
+    shift
+    [[ $# -gt 0 ]] || { echo "Usage: krb allow <slug> [<slug>...]" >&2; exit 2; }
+    add_to_list "$ALLOW_FILE" "$@"
+    ;;
+  unallow|disallow)
+    shift
+    [[ $# -gt 0 ]] || { echo "Usage: krb unallow <slug> [<slug>...]" >&2; exit 2; }
+    remove_from_list "$ALLOW_FILE" "$@"
+    ;;
+  allowlist)
+    print_list "$ALLOW_FILE" "allowlist"
+    ;;
+  logs)
+    n="${2:-100}"
+    journalctl -u "$SVC" --no-pager -n "$n"
+    ;;
+  watch)
+    journalctl -u "$SVC" -f --no-pager | grep --line-buffered -E '\[KRB\]'
+    ;;
+  restart)
+    systemctl restart "$SVC"
+    echo "restarted."
+    systemctl is-active "$SVC"
+    ;;
+  *)
+    cat <<USAGE
+Usage:
+  sudo krb status                      Show mode, lists, service state
+  sudo krb mode [block-all|blocklist|allowlist]
+  sudo krb add <slug> [<slug>...]      Add to blocklist
+  sudo krb remove <slug> [...]         Remove from blocklist
+  sudo krb list                        Print blocklist
+  sudo krb allow <slug> [...]          Add to allowlist
+  sudo krb unallow <slug> [...]        Remove from allowlist
+  sudo krb allowlist                   Print allowlist
+  sudo krb logs [N]                    Tail mitmproxy log
+  sudo krb watch                       Follow [KRB] decisions live
+  sudo krb restart                     Restart the service
+USAGE
+    exit 2
+    ;;
+esac

@@ -36,11 +36,30 @@ sudo -u krb python3 -m venv "${INSTALL_DIR}/venv"
 sudo -u krb "${INSTALL_DIR}/venv/bin/pip" install --upgrade pip
 sudo -u krb "${INSTALL_DIR}/venv/bin/pip" install "mitmproxy>=11"
 
-echo "==> Fetching the addon and the systemd unit"
+echo "==> Fetching the addon, systemd unit, and management CLI"
 curl -fsSL "${REPO_RAW}/proxy/mitmproxy_addon.py"   -o "${INSTALL_DIR}/mitmproxy_addon.py"
 curl -fsSL "${REPO_RAW}/proxy/krb-mitmproxy.service" -o /etc/systemd/system/krb-mitmproxy.service
+curl -fsSL "${REPO_RAW}/proxy/krb-cli"               -o /usr/local/bin/krb
 chown krb:krb "${INSTALL_DIR}/mitmproxy_addon.py"
 chmod 0644 /etc/systemd/system/krb-mitmproxy.service
+chmod 0755 /usr/local/bin/krb
+
+echo "==> Seeding default mode + blocklist files"
+if [[ ! -f "${INSTALL_DIR}/conf/mode.txt" ]]; then
+  echo "blocklist" > "${INSTALL_DIR}/conf/mode.txt"
+fi
+if [[ ! -f "${INSTALL_DIR}/conf/blocklist.txt" ]]; then
+  cat > "${INSTALL_DIR}/conf/blocklist.txt" <<'EOF'
+# One Kick streamer slug per line. Lines starting with # are comments.
+# Edit with: sudo krb add <slug> / sudo krb remove <slug>
+EOF
+fi
+if [[ ! -f "${INSTALL_DIR}/conf/allowlist.txt" ]]; then
+  cat > "${INSTALL_DIR}/conf/allowlist.txt" <<'EOF'
+# Used only when mode is "allowlist". Same syntax as blocklist.
+EOF
+fi
+chown -R krb:krb "${INSTALL_DIR}/conf"
 
 echo "==> Opening firewall (UFW) for WireGuard UDP/${PORT_WG}"
 if command -v ufw >/dev/null 2>&1; then
