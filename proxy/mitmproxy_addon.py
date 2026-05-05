@@ -1,5 +1,5 @@
 """
-Kick Raid Blocker — mitmproxy addon (v0.3.0).
+Kick Raid Blocker — mitmproxy addon (v0.3.1).
 
 Modes (configured by /opt/krb/conf/mode.txt):
 
@@ -227,4 +227,13 @@ def websocket_message(flow: http.HTTPFlow) -> None:
         logger.info("[KRB] PASS %s on %s — %s", event_name, channel, reason)
 
 
-addons = [type("KickRaidBlocker", (), {"websocket_message": websocket_message})()]
+class KickRaidBlocker:
+    """Addon class — mitmproxy expects bound methods, so we wrap the
+    module-level handler. Exposing it as a real class also makes
+    introspection (`mitmdump --commands`) prettier."""
+
+    def websocket_message(self, flow: http.HTTPFlow) -> None:  # noqa: D401
+        websocket_message(flow)
+
+
+addons = [KickRaidBlocker()]
