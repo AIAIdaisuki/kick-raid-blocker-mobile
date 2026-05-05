@@ -39,6 +39,7 @@ case "$SUB" in
   qr)             run show-qr.sh ;;
   admin-qr)       run serve-admin-qr.sh ;;
   preflight)      run preflight.sh ;;
+  diagnose|diag)  run diagnose.sh ;;
   uninstall)      run uninstall-vps.sh ;;
   status)
     if [[ $EUID -ne 0 ]]; then exec sudo -E "$0" "$@"; fi
@@ -61,6 +62,7 @@ Subcommands:
   qr              Show WireGuard QR (terminal)
   admin-qr        Serve admin URL as PNG QR
   preflight       Preflight diagnostics + swap
+  diagnose        Show recent raid block decisions and config (debug)
   uninstall       Completely remove everything
   status          Show all KRB services status
 EOF
